@@ -1,0 +1,3 @@
+[submodule "parser_combinator"]
+	path = parser_combinator
+	url = https://github.com/Mroik/ocaml-parser-combinator.git
