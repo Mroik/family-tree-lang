@@ -34,7 +34,9 @@ let trans_prob =
     let inner_parser queue =
         match run_parser (parse_int_literal) queue with
         | Failure (a, qq) -> Failure (Probability 0, qq)
-        | Success (a, qq) -> Success (Probability (int_of_string a), qq)
+        | Success (a, qq) ->
+            let valu = String.trim a |> int_of_string in
+            Success (Probability valu, qq)
     in
     Parser (inner_parser)
 ;;
@@ -56,9 +58,12 @@ let trans_char =
             | Failure (a, qq2) -> Failure ((None, Some a) ,qq2), qq2
             | Success (a, qq2) -> Success ((None, Some a) ,qq2), qq2
         in
-        match run_parser ((skip_whitespace) #~ (parse_char ';')) rest with
-        | Failure (a, qq) -> Failure ((None, None), qq)
-        | _ -> ris
+        match run_parser ((skip_whitespace) #~ (parse_char ';') #~ (skip_whitespace)) rest with
+        | Failure (a, qq) -> Failure ((None, None), queue)
+        | Success (a, ff) ->
+            match ris with
+            | Success (a, rr) -> Success (a, ff)
+            | Failure (a, vv) -> Failure (a, queue)
     in
     Parser (inner_parser)
 ;;
@@ -79,7 +84,7 @@ let trans_char_rep queue =
 
 let transmissible_char queue =
     let p1 = ((parse_string "can") #~ (skip_whitespace)) #~ (parse_string "transmit") #~ (skip_whitespace) in
-    let p2 = (parse_str_literal) #<~ ((skip_whitespace) #~ (parse_char '{')) in
+    let p2 = (parse_str_literal) #<~ ((skip_whitespace) #~ (parse_char '{') #~ (skip_whitespace)) in
     let p3 = trans_char_rep in
     let p4 = (skip_whitespace) #~ (parse_char '}') in
 
