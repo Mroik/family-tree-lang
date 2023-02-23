@@ -1,10 +1,17 @@
+(*
 open Combinator
+*)
 
 exception Exception
 
 type gender_type = Male | Female | GenderError;;
 type probability = Probability of int;;
-type characteristic = Transmissible of string * (string option * probability option) list;;
+type transmissible_characteristic =
+    | Trans_conditional of string
+    | Trans_probability of probability
+    | Trans_error
+;;
+type characteristic = Transmissible of string * transmissible_characteristic list;;
 
 
 (* sex_decl *)
@@ -52,14 +59,14 @@ let trans_cond =
 let trans_char =
     let inner_parser queue =
         let ris, rest = match run_parser (trans_cond) queue with
-        | Success (a, qq) -> Success ((Some a, None), qq), qq
+        | Success (a, qq) -> Success (Trans_conditional a, qq), qq
         | Failure (a, qq) ->
             match run_parser (trans_prob) queue with
-            | Failure (a, qq2) -> Failure ((None, Some a) ,qq2), qq2
-            | Success (a, qq2) -> Success ((None, Some a) ,qq2), qq2
+            | Failure (a, qq2) -> Failure (Trans_error, qq2), qq2
+            | Success (a, qq2) -> Success (Trans_probability a, qq2), qq2
         in
         match run_parser ((skip_whitespace) #~ (parse_char ';') #~ (skip_whitespace)) rest with
-        | Failure (a, qq) -> Failure ((None, None), queue)
+        | Failure (a, qq) -> Failure (Trans_error, queue)
         | Success (a, ff) ->
             match ris with
             | Success (a, rr) -> Success (a, ff)
