@@ -205,7 +205,7 @@ let hereditary queue =
     | Success (_, qq) -> true, qq
     in
     if not v1 || name = "" || List.length chars = 0 || not v4 then
-        None
+        None, queue
     else
-        Some (Hereditary (name, chars))
+        Some (Hereditary (name, chars)), qq4
 ;;
