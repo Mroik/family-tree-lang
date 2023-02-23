@@ -1,17 +1,28 @@
-(*
 open Combinator
-*)
 
 exception Exception
 
 type gender_type = Male | Female | GenderError;;
+
 type probability = Probability of int;;
 type transmissible_characteristic =
     | Trans_conditional of string
     | Trans_probability of probability
     | Trans_error
 ;;
-type characteristic = Transmissible of string * transmissible_characteristic list;;
+
+type char_of_hereditary =
+    | Hered_conditional of string
+    | Hered_probability of int
+    | Hered_Error
+;;
+
+type characteristic =
+    | Char_Error
+    | Transmissible of string * transmissible_characteristic list
+    | Absent_characteristic of string
+    | Hereditary of string * char_of_hereditary list
+;;
 
 
 (* sex_decl *)
@@ -77,14 +88,9 @@ let trans_char =
 
 let trans_char_rep queue =
     let rec loop acc qq =
-        let v, acc2, qq1 = match run_parser (trans_char) qq with
-        | Failure (_, qq2) -> false, acc, qq2
-        | Success (a, qq2) -> true, (a :: acc), qq2
-        in
-        if not v then
-            List.rev acc2, qq1
-        else
-            loop acc2 qq1
+        match run_parser (trans_char) qq with
+        | Failure (_, qq2) -> List.rev acc, qq2
+        | Success (a, qq2) -> loop (a :: acc) qq2
     in
     loop [] queue
 ;;
@@ -114,4 +120,92 @@ let transmissible_char queue =
         Some (
             Transmissible (name, cc_list)
         ), qq4
+;;
+
+
+(* absent_char *)
+let absent_char =
+    let inner_parser queue =
+        let t = (parse_string "doesn't") #~ (skip_whitespace) #~ (parse_string "have") #~ (skip_whitespace) in
+        let p = t #~> (parse_str_literal) in
+        match run_parser (p) queue with
+        | Failure (_, qq) -> Failure (Char_Error, qq)
+        | Success (a, qq) -> Success (Absent_characteristic a, qq)
+    in
+    Parser (inner_parser)
+;;
+
+
+(* hereditary *)
+let hered_condi =
+    let inner_parser queue =
+        let p = ((parse_string "partner") #~ (skip_whitespace)) #~> (parse_str_literal) in
+        match run_parser (p) queue with
+        | Failure (a, qq) -> Success (Hered_Error, qq)
+        | Success (a, qq) -> Success (Hered_conditional a, qq)
+    in
+    Parser (inner_parser)
+;;
+
+let hered_prob =
+    let inner_parser queue =
+        match run_parser (parse_int_literal) queue with
+        | Failure (_, qq) -> Failure (Hered_Error, qq)
+        | Success (a, qq) -> Success (Hered_probability (int_of_string a), qq)
+    in
+    Parser (inner_parser)
+;;
+
+let char_of_hereditary =
+    let inner_parser queue =
+        let p = (skip_whitespace) #~ (parse_char ';') #~ (skip_whitespace) in
+        let ris, rr = match run_parser (hered_prob) queue with
+        | Success (a, qq) -> a, qq
+        | Failure (_, _) ->
+            match run_parser (hered_condi) queue with
+            | Success (b, qq2) -> b, qq2
+            | Failure (b, qq2) -> b, qq2
+        in
+        match run_parser (p) rr with
+        | Failure (a, qq) -> Failure (Hered_Error, queue)
+        | Success (a, qq) ->
+            if ris = Hered_Error then
+                Failure (ris, queue)
+            else
+                Success (ris, qq)
+    in
+    Parser (inner_parser)
+;;
+
+let char_of_hereditary_rep queue =
+    let rec loop acc qq =
+        match run_parser (char_of_hereditary) qq with
+        | Success (a, qq2) -> loop (a :: acc) qq2
+        | Failure (_, _) -> List.rev acc, qq
+    in
+    loop [] queue
+;;
+
+let hereditary queue =
+    let p1 = (parse_string "has") #~ (skip_whitespace) #~ (parse_string "hereditary") #~ (skip_whitespace) in
+    let p2 = (parse_str_literal) #<~ ((skip_whitespace) #~ (parse_char '{') #~ (skip_whitespace)) in
+    let p4 = parse_char '}' in
+
+    let v1, qq1 = match run_parser (p1) queue with
+    | Failure (_, qq) -> false, qq
+    | Success (a, qq) -> true, qq
+    in
+    let name, qq2 = match run_parser (p2) qq1 with
+    | Failure (_, qq) -> "", qq
+    | Success (a, qq) -> a, qq
+    in
+    let chars, qq3 = char_of_hereditary_rep qq2 in
+    let v4, qq4 = match run_parser (p4) qq3 with
+    | Failure (_, qq) -> false, qq
+    | Success (_, qq) -> true, qq
+    in
+    if not v1 || name = "" || List.length chars = 0 || not v4 then
+        None
+    else
+        Some (Hereditary (name, chars))
 ;;
