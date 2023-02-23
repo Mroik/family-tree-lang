@@ -1,0 +1,17 @@
+axiom := node* conditional* query*
+
+node := int string_literal '{' characteristic* '}'
+characteristic := (child | simple_char | hereditary | absent_char | transmissible_char | sex_decl) ';'
+child := 'has child' string_literal
+simple_char := 'is' string_literal
+hereditary := 'has hereditary' string_literal '{' char_of_hereditary* '}'
+char_of_hereditary := (hered_prob | hered_condi) ';'
+hered_prob := int
+hered_condi := 'partner' string_literal
+absent_char := 'doesn't have' string_literal
+transmissible_char := 'can transmit' string_literal '{' trans_char* '}'
+trans_char := (trans_cond | trans_prob) ';'
+trans_cond := 'partner' string_literal
+trans_prob := int
+sex_decl := 'is' gender
+gender := 'male' | 'female'
