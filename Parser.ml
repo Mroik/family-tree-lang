@@ -19,29 +19,33 @@ type char_of_hereditary =
 
 type characteristic =
     | Char_Error
+    | Gender of gender_type
     | Transmissible of string * transmissible_characteristic list
     | Absent_characteristic of string
     | Hereditary of string * char_of_hereditary list
+    | Simple of string
 ;;
 
 
 (* sex_decl *)
 let gender =
     let inner_parser queue =
-        let p = (parse_string "male") #| (parse_string "female") in
-        run_parser (p) queue 
+        let pp = (parse_string "male") #| (parse_string "female") in
+        let p = ((parse_string "is ") #~ skip_whitespace) #~> (pp) #<~ (skip_whitespace #~ (parse_char ';')) in
+        match run_parser (p) queue with
+        | Failure (a, qq) -> Failure (GenderError, qq)
+        | Success ("male", qq) -> Success (Male, qq)
+        | Success ("female", qq) -> Success (Female, qq)
+        | _ -> raise Exception
     in
     Parser (inner_parser)
 ;;
 
 let sex_decl =
     let inner_parser queue =
-        let p = ((parse_string "is ") #~ skip_whitespace) #~> (gender) #<~ (skip_whitespace #~ (parse_char ';')) in
-        match run_parser (p) queue with
-        | Failure (a, qq) -> Failure (GenderError, qq)
-        | Success ("male", qq) -> Success (Male, qq)
-        | Success ("female", qq) -> Success (Female, qq)
-        | _ -> raise Exception
+        match run_parser (gender) queue with
+        | Success (g, qq) -> Success (Gender g, qq)
+        | Failure (g, qq) -> Failure (Gender g, qq)
     in
     Parser (inner_parser)
 ;;
@@ -95,31 +99,32 @@ let trans_char_rep queue =
     loop [] queue
 ;;
 
-let transmissible_char queue =
-    let p1 = ((parse_string "can") #~ (skip_whitespace)) #~ (parse_string "transmit") #~ (skip_whitespace) in
-    let p2 = (parse_str_literal) #<~ ((skip_whitespace) #~ (parse_char '{') #~ (skip_whitespace)) in
-    let p3 = trans_char_rep in
-    let p4 = (skip_whitespace) #~ (parse_char '}') in
+let transmissible_char =
+    let inner_parser queue =
+        let p1 = ((parse_string "can") #~ (skip_whitespace)) #~ (parse_string "transmit") #~ (skip_whitespace) in
+        let p2 = (parse_str_literal) #<~ ((skip_whitespace) #~ (parse_char '{') #~ (skip_whitespace)) in
+        let p3 = trans_char_rep in
+        let p4 = (skip_whitespace) #~ (parse_char '}') in
 
-    let v1, qq1 = match run_parser (p1) queue with
-    | Failure (_, qq) -> false, qq
-    | Success (a, qq) -> true, qq
+        let v1, qq1 = match run_parser (p1) queue with
+        | Failure (_, qq) -> false, qq
+        | Success (a, qq) -> true, qq
+        in
+        let name, qq2 = match run_parser (p2) qq1 with
+        | Failure (_, qq) -> "", qq
+        | Success (a, qq) -> a, qq
+        in
+        let cc_list, qq3 = p3 qq2 in
+        let qq4 = match run_parser (p4) qq3 with
+        | Failure (_, qq) -> qq
+        | Success (_, qq) -> qq
+        in
+        if (not v1) || (name = "") || (cc_list = []) then
+            Failure (Char_Error, qq4)
+        else
+            Success (Transmissible (name, cc_list), qq4)
     in
-    let name, qq2 = match run_parser (p2) qq1 with
-    | Failure (_, qq) -> "", qq
-    | Success (a, qq) -> a, qq
-    in
-    let cc_list, qq3 = p3 qq2 in
-    let qq4 = match run_parser (p4) qq3 with
-    | Failure (_, qq) -> qq
-    | Success (_, qq) -> qq
-    in
-    if (not v1) || (name = "") || (cc_list = []) then
-        None, qq4
-    else
-        Some (
-            Transmissible (name, cc_list)
-        ), qq4
+    Parser (inner_parser)
 ;;
 
 
@@ -186,26 +191,29 @@ let char_of_hereditary_rep queue =
     loop [] queue
 ;;
 
-let hereditary queue =
-    let p1 = (parse_string "has") #~ (skip_whitespace) #~ (parse_string "hereditary") #~ (skip_whitespace) in
-    let p2 = (parse_str_literal) #<~ ((skip_whitespace) #~ (parse_char '{') #~ (skip_whitespace)) in
-    let p4 = parse_char '}' in
+let hereditary =
+    let inner_parser queue =
+        let p1 = (parse_string "has") #~ (skip_whitespace) #~ (parse_string "hereditary") #~ (skip_whitespace) in
+        let p2 = (parse_str_literal) #<~ ((skip_whitespace) #~ (parse_char '{') #~ (skip_whitespace)) in
+        let p4 = parse_char '}' in
 
-    let v1, qq1 = match run_parser (p1) queue with
-    | Failure (_, qq) -> false, qq
-    | Success (a, qq) -> true, qq
+        let v1, qq1 = match run_parser (p1) queue with
+        | Failure (_, qq) -> false, qq
+        | Success (a, qq) -> true, qq
+        in
+        let name, qq2 = match run_parser (p2) qq1 with
+        | Failure (_, qq) -> "", qq
+        | Success (a, qq) -> a, qq
+        in
+        let chars, qq3 = char_of_hereditary_rep qq2 in
+        let v4, qq4 = match run_parser (p4) qq3 with
+        | Failure (_, qq) -> false, qq
+        | Success (_, qq) -> true, qq
+        in
+        if not v1 || name = "" || List.length chars = 0 || not v4 then
+            Failure (Char_Error, queue)
+        else
+            Success (Hereditary (name, chars), qq4)
     in
-    let name, qq2 = match run_parser (p2) qq1 with
-    | Failure (_, qq) -> "", qq
-    | Success (a, qq) -> a, qq
-    in
-    let chars, qq3 = char_of_hereditary_rep qq2 in
-    let v4, qq4 = match run_parser (p4) qq3 with
-    | Failure (_, qq) -> false, qq
-    | Success (_, qq) -> true, qq
-    in
-    if not v1 || name = "" || List.length chars = 0 || not v4 then
-        None, queue
-    else
-        Some (Hereditary (name, chars)), qq4
+    Parser (inner_parser)
 ;;
