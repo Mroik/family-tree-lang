@@ -24,6 +24,12 @@ type characteristic =
     | Absent_characteristic of string
     | Hereditary of string * char_of_hereditary list
     | Simple of string
+    | Has_child of string
+;;
+
+type node =
+    | Node of int * string * characteristic list
+    | Node_error
 ;;
 
 
@@ -214,6 +220,83 @@ let hereditary =
             Failure (Char_Error, queue)
         else
             Success (Hereditary (name, chars), qq4)
+    in
+    Parser (inner_parser)
+;;
+
+
+(* simple_char *)
+let simple_char =
+    let inner_parser queue =
+        let p = ((parse_string "is") #~ (skip_whitespace)) #~> (parse_str_literal) in
+        match run_parser (p) queue with
+        | Success (a, qq) -> Success (Simple a, qq)
+        | Failure (a, qq) -> Failure (Char_Error, qq)
+    in
+    Parser (inner_parser)
+;;
+
+
+(* child *)
+let child =
+    let inner_parser queue =
+        let t = (parse_string "has") #~ (skip_whitespace) #~ (parse_string "child") #~ (skip_whitespace) in
+        let p = (t) #~> (parse_str_literal) in
+        match run_parser (p) queue with
+        | Success (a, qq) -> Success (Has_child a, qq)
+        | Failure (_, qq) -> Failure (Char_Error, qq)
+    in
+    Parser (inner_parser)
+;;
+
+
+(* characteristic *)
+let characteristic =
+    let inner_parser queue =
+        let p = (child) #| (simple_char) #| (hereditary) #| (absent_char) #| (transmissible_char) #| (sex_decl) in
+        let cc, qq1 = match run_parser (p) queue with
+        | Success (a, qq) -> a, qq
+        | Failure (a, qq) -> a, qq
+        in
+        match run_parser (skip_whitespace) qq1 with
+        | Success (_, qq) -> Success (cc, qq)
+        | Failure (_, qq) -> Failure (cc, qq)
+    in
+    Parser (inner_parser)
+;;
+
+
+(* node *)
+let characteristic_rep queue =
+    let rec loop acc qq =
+        match run_parser (characteristic) qq with
+        | Failure (_, qq1) -> List.rev acc, qq1
+        | Success (a, qq1) -> loop (a :: acc) qq1
+    in
+    loop [] queue
+;;
+
+
+let node =
+    let inner_parser queue =
+        let nid, qq1, v1 = match run_parser (parse_int_literal #<~ skip_whitespace) queue with
+        | Success (a, qq) -> int_of_string a, qq, true
+        | Failure (_, qq) -> 0, qq, false
+        in
+        let name, qq2, v2 =
+            match run_parser (parse_str_literal #<~ skip_whitespace #<~ (parse_char '{') #<~ skip_whitespace) queue with
+            | Success (a, qq) -> a, qq, true
+            | Failure (a, qq) -> a, qq, false
+        in
+        let chars, qq3 = characteristic_rep qq2 in
+        let v4, qq4 = match run_parser ((parse_char '}') #~ skip_whitespace) qq3 with
+        | Success (_, qq) -> true, qq
+        | Failure (_, qq) -> false, qq
+        in
+        if not v1 || not v2 || List.length chars = 0 || not v4 then
+            Failure (Node_error, queue)
+        else
+            Success (Node (nid, name, chars), qq3)
     in
     Parser (inner_parser)
 ;;
