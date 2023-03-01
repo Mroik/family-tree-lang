@@ -37,9 +37,9 @@ type node =
 let gender =
     let inner_parser queue =
         let pp = (parse_string "male") #| (parse_string "female") in
-        let p = ((parse_string "is ") #~ skip_whitespace) #~> (pp) #<~ (skip_whitespace #~ (parse_char ';')) in
+        let p = ((parse_string "is ") #~ skip_whitespace) #~> (pp) #<~ (skip_whitespace) in
         match run_parser (p) queue with
-        | Failure (a, qq) -> Failure (GenderError, qq)
+        | Failure (a, _) -> Failure (GenderError, queue)
         | Success ("male", qq) -> Success (Male, qq)
         | Success ("female", qq) -> Success (Female, qq)
         | _ -> raise Exception
@@ -51,7 +51,7 @@ let sex_decl =
     let inner_parser queue =
         match run_parser (gender) queue with
         | Success (g, qq) -> Success (Gender g, qq)
-        | Failure (g, qq) -> Failure (Gender g, qq)
+        | Failure (g, _) -> Failure (Gender g, queue)
     in
     Parser (inner_parser)
 ;;
@@ -61,7 +61,7 @@ let sex_decl =
 let trans_prob =
     let inner_parser queue =
         match run_parser (parse_int_literal) queue with
-        | Failure (a, qq) -> Failure (Probability 0, qq)
+        | Failure (a, _) -> Failure (Probability 0, queue)
         | Success (a, qq) ->
             let valu = String.trim a |> int_of_string in
             Success (Probability valu, qq)
@@ -81,7 +81,7 @@ let trans_char =
     let inner_parser queue =
         let ris, rest = match run_parser (trans_cond) queue with
         | Success (a, qq) -> Success (Trans_conditional a, qq), qq
-        | Failure (a, qq) ->
+        | Failure (a, _) ->
             match run_parser (trans_prob) queue with
             | Failure (a, qq2) -> Failure (Trans_error, qq2), qq2
             | Success (a, qq2) -> Success (Trans_probability a, qq2), qq2
@@ -113,20 +113,20 @@ let transmissible_char =
         let p4 = (skip_whitespace) #~ (parse_char '}') in
 
         let v1, qq1 = match run_parser (p1) queue with
-        | Failure (_, qq) -> false, qq
+        | Failure (_, _) -> false, queue
         | Success (a, qq) -> true, qq
         in
         let name, qq2 = match run_parser (p2) qq1 with
-        | Failure (_, qq) -> "", qq
+        | Failure (_, _) -> "", queue
         | Success (a, qq) -> a, qq
         in
         let cc_list, qq3 = p3 qq2 in
         let qq4 = match run_parser (p4) qq3 with
-        | Failure (_, qq) -> qq
+        | Failure (_, _) -> queue
         | Success (_, qq) -> qq
         in
         if (not v1) || (name = "") || (cc_list = []) then
-            Failure (Char_Error, qq4)
+            Failure (Char_Error, queue)
         else
             Success (Transmissible (name, cc_list), qq4)
     in
@@ -140,7 +140,7 @@ let absent_char =
         let t = (parse_string "doesn't") #~ (skip_whitespace) #~ (parse_string "have") #~ (skip_whitespace) in
         let p = t #~> (parse_str_literal) in
         match run_parser (p) queue with
-        | Failure (_, qq) -> Failure (Char_Error, qq)
+        | Failure (_, _) -> Failure (Char_Error, queue)
         | Success (a, qq) -> Success (Absent_characteristic a, qq)
     in
     Parser (inner_parser)
@@ -152,7 +152,7 @@ let hered_condi =
     let inner_parser queue =
         let p = ((parse_string "partner") #~ (skip_whitespace)) #~> (parse_str_literal) in
         match run_parser (p) queue with
-        | Failure (a, qq) -> Success (Hered_Error, qq)
+        | Failure (_, _) -> Success (Hered_Error, queue)
         | Success (a, qq) -> Success (Hered_conditional a, qq)
     in
     Parser (inner_parser)
@@ -161,7 +161,7 @@ let hered_condi =
 let hered_prob =
     let inner_parser queue =
         match run_parser (parse_int_literal) queue with
-        | Failure (_, qq) -> Failure (Hered_Error, qq)
+        | Failure (_, _) -> Failure (Hered_Error, queue)
         | Success (a, qq) -> Success (Hered_probability (int_of_string a), qq)
     in
     Parser (inner_parser)
@@ -231,7 +231,7 @@ let simple_char =
         let p = ((parse_string "is") #~ (skip_whitespace)) #~> (parse_str_literal) in
         match run_parser (p) queue with
         | Success (a, qq) -> Success (Simple a, qq)
-        | Failure (a, qq) -> Failure (Char_Error, qq)
+        | Failure (_, _) -> Failure (Char_Error, queue)
     in
     Parser (inner_parser)
 ;;
@@ -244,7 +244,7 @@ let child =
         let p = (t) #~> (parse_str_literal) in
         match run_parser (p) queue with
         | Success (a, qq) -> Success (Has_child a, qq)
-        | Failure (_, qq) -> Failure (Char_Error, qq)
+        | Failure (_, _) -> Failure (Char_Error, queue)
     in
     Parser (inner_parser)
 ;;
@@ -254,13 +254,17 @@ let child =
 let characteristic =
     let inner_parser queue =
         let p = (child) #| (simple_char) #| (hereditary) #| (absent_char) #| (transmissible_char) #| (sex_decl) in
-        let cc, qq1 = match run_parser (p) queue with
-        | Success (a, qq) -> a, qq
-        | Failure (a, qq) -> a, qq
+        let cc, qq1, v1 = match run_parser (p) queue with
+        | Success (a, qq) -> a, qq, true
+        | Failure (a, qq) -> a, qq, false
         in
-        match run_parser (skip_whitespace) qq1 with
-        | Success (_, qq) -> Success (cc, qq)
-        | Failure (_, qq) -> Failure (cc, qq)
+        match run_parser (skip_whitespace #~ (parse_char ';') #~ skip_whitespace) qq1 with
+        | Failure (_, qq) -> Failure (Char_Error, queue)
+        | Success (_, qq) ->
+            if v1 then
+                Success (cc, qq)
+            else
+                Failure (Char_Error, queue)
     in
     Parser (inner_parser)
 ;;
@@ -284,19 +288,19 @@ let node =
         | Failure (_, qq) -> 0, qq, false
         in
         let name, qq2, v2 =
-            match run_parser (parse_str_literal #<~ skip_whitespace #<~ (parse_char '{') #<~ skip_whitespace) queue with
+            match run_parser (parse_str_literal #<~ skip_whitespace #<~ (parse_char '{') #<~ skip_whitespace) qq1 with
             | Success (a, qq) -> a, qq, true
             | Failure (a, qq) -> a, qq, false
         in
         let chars, qq3 = characteristic_rep qq2 in
-        let v4, qq4 = match run_parser ((parse_char '}') #~ skip_whitespace) qq3 with
+        let v4, qq4 = match run_parser ((skip_whitespace) #~ (parse_char '}') #~ skip_whitespace) qq3 with
         | Success (_, qq) -> true, qq
         | Failure (_, qq) -> false, qq
         in
         if not v1 || not v2 || List.length chars = 0 || not v4 then
             Failure (Node_error, queue)
         else
-            Success (Node (nid, name, chars), qq3)
+            Success (Node (nid, name, chars), qq4)
     in
     Parser (inner_parser)
 ;;
