@@ -42,7 +42,7 @@ let gender =
         | Failure (a, _) -> Failure (GenderError, queue)
         | Success ("male", qq) -> Success (Male, qq)
         | Success ("female", qq) -> Success (Female, qq)
-        | _ -> raise Exception
+        | Success (_, _) -> Failure (GenderError, queue)
     in
     Parser (inner_parser)
 ;;
