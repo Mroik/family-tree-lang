@@ -1,17 +1,17 @@
 build:
-	cp parser_combinator/Combinator.ml .
-	ocamlc -o parser Combinator.ml Parser.ml
-	rm Combinator.ml
+	cp parser_combinator/combinator.ml .
+	ocamlc -o parser combinator.ml parser.ml
+	rm combinator.ml
 build_debug:
-	cp parser_combinator/Combinator.ml .
-	ocamlc -g -o parser Combinator.ml Parser.ml
-	rm Combinator.ml
+	cp parser_combinator/combinator.ml .
+	ocamlc -g -o parser combinator.ml carser.ml
+	rm combinator.ml
 clean:
-	rm Combinator.cm*
-	rm Parser.cm*
+	rm combinator.cm*
+	rm parser.cm*
 	rm parser
 compile_deps:
-	ocamlopt -c parser_combinator/Combinator.ml
-	mv parser_combinator/Combinator.o parser_combinator/Combinator.cm* .
+	ocamlopt -c parser_combinator/combinator.ml
+	mv parser_combinator/combinator.o parser_combinator/combinator.cm* .
 clean_deps:
-	rm Combinator.o Combinator.cm*
+	rm combinator.o combinator.cm*

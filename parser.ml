@@ -280,7 +280,6 @@ let characteristic_rep queue =
     loop [] queue
 ;;
 
-
 let node =
     let inner_parser queue =
         let nid, qq1, v1 = match run_parser (parse_int_literal #<~ skip_whitespace) queue with
